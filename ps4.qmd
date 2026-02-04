@@ -331,19 +331,142 @@ Name: 3358, dtype: object
 ### 1. Plot the number of enforcement actions over time
 
 ```{python}
+import altair as alt
+import pandas as pd
 
+# Load the dataset (using the 2021 file gives us the best view)
+df = pd.read_csv("enforcement_actions_2022_1.csv")
+
+# Convert the 'Date' column to real datetime objects
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Aggregate: Count actions per Month
+monthly_counts = df.groupby(pd.Grouper(key='Date', freq='ME')).size().reset_index(name='Count')
+
+# Create the Line Chart
+chart_3a = alt.Chart(monthly_counts).mark_line(point=True).encode(
+    x=alt.X('Date', title='Date (Month-Year)', axis=alt.Axis(format='%Y-%m')),
+    y=alt.Y('Count', title='Number of Enforcement Actions'),
+    tooltip=['Date', 'Count']
+).properties(
+    title='Number of Enforcement Actions Over Time (Since Jan 2022)',
+    width=600,
+    height=400
+)
+# Display the chart
+chart_3a.display()
 ```
+
+**Interpretation of Enforcement Actions Over Time (Since Jan 2022):**
+*High Volatility:* The most immediate observation is that enforcement activity is not consistent month-to-month. The chart shows a "sawtooth" pattern with sharp fluctuations, indicating that HHS OIG enforcement actions tend to be reported in batches or waves rather than a steady daily stream.
+
+*General Range:* Despite the volatility, the volume of actions appears relatively stable over the long term, generally hovering between 50 and 90 actions per month. There is no massive upward or downward structural break in the dataset over these four years.
+
+*Significant Peaks:* There are distinct spikes where activity exceeded 90 or even 100 actions (notably around mid-2023 and late 2025). This could correspond to the conclusion of major investigation cycles or fiscal year reporting deadlines.
+
+*The "Current Month" Drop-off:* The sharp plunge at the very end of the chart (far right) is an artifact of incomplete data. Since the data was scraped in early February 2026, the count for that final month is close to zero simply because the month has just begun, not because enforcement has stopped.
 
 ### 2. Plot the number of enforcement actions categorized:
 
 * based on "Criminal and Civil Actions" vs. "State Enforcement Agencies"
 
 ```{python}
+import pandas as pd
+import altair as alt
 
+# Load the dataset
+df = pd.read_csv("enforcement_actions_2022_1.csv")
+
+# Convert Date to datetime objects
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Filter: Select only the two categories of interest
+target_categories = ["Criminal and Civil Actions", "State Enforcement Agencies"]
+df_filtered = df[df['Category'].isin(target_categories)]
+
+# Aggregate: Group by Month AND Category
+monthly_cat_counts = df_filtered.groupby([pd.Grouper(key='Date', freq='ME'), 'Category']).size().reset_index(name='Count')
+
+# Plot: Line chart split by color
+chart_3b_i = alt.Chart(monthly_cat_counts).mark_line(point=True).encode(
+    x=alt.X('Date', title='Date'),
+    y=alt.Y('Count', title='Number of Actions'),
+    color=alt.Color('Category', title='Agency Type'),
+    tooltip=['Date', 'Category', 'Count']
+).properties(
+    title='Enforcement Actions: Criminal/Civil vs. State Agencies (Since Jan 2022)',
+    width=600,
+    height=400
+)
+
+chart_3b_i.display()
 ```
+
+***Analysis:* The plot compares the volume of "Criminal and Civil Actions" versus "State Enforcement Agencies."**
+
+*Dominant Category:* "Criminal and Civil Actions" (blue line) consistently tracks significantly higher than "State Enforcement Agencies" (orange line) throughout the entire period. This indicates that federal-level criminal and civil enforcement is the primary driver of HHS OIG's public reporting volume.
+
+*Volatility:* The "Criminal and Civil Actions" line shows high volatility with sharp peaks (e.g., reaching 60 actions in mid-2025), whereas "State Enforcement Agencies" remains relatively flatter, typically fluctuating between 10 and 30 actions per month.
+
+*Correlation:* There appears to be a loose correlation in reporting cycles; often when one category spikes or dips (such as the dip in early 2024), the other follows a similar, albeit smaller, trend.
 
 * based on five topics
 
 ```{python}
+# 1. Filter: Start with ONLY "Criminal and Civil Actions"
+# We use .copy() to ensure we don't get a "SettingWithCopy" warning
+df_criminal = df[df['Category'] == "Criminal and Civil Actions"].copy()
 
+# 2. Define the classification function
+# We check the title for keywords to assign one of the 5 topics
+def classify_topic(title):
+    title = title.lower() # Convert to lowercase so "Bank" and "bank" both match
+    
+    # Keywords for "Health Care Fraud"
+    if any(word in title for word in ['medicare', 'medicaid', 'doctor', 'hospital', 'pharmacy', 'nurse', 'medical', 'health', 'provider', 'clinic', 'care']):
+        return "Health Care Fraud"
+    
+    # Keywords for "Financial Fraud" (Prompt Hint: "bank", "financial")
+    elif any(word in title for word in ['bank', 'financial', 'laundering', 'embezzle', 'theft', 'tax', 'fraud', 'wire', 'identity']):
+        return "Financial Fraud"
+    
+    # Keywords for "Drug Enforcement"
+    elif any(word in title for word in ['drug', 'opioid', 'pill', 'prescri', 'narcotic', 'controlled substance', 'fentanyl', 'diversion']):
+        return "Drug Enforcement"
+    
+    # Keywords for "Bribery/Corruption"
+    elif any(word in title for word in ['bribe', 'kickback', 'corrupt', 'payoff', 'extortion']):
+        return "Bribery/Corruption"
+        
+    # Everything else goes to "Other"
+    else:
+        return "Other"
+
+# 3. Apply the function to create a new 'Topic' column
+df_criminal['Topic'] = df_criminal['Title'].apply(classify_topic)
+
+# 4. Aggregate by Month and Topic
+topic_counts = df_criminal.groupby([pd.Grouper(key='Date', freq='ME'), 'Topic']).size().reset_index(name='Count')
+
+# 5. Plot the final line chart
+chart_3b_ii = alt.Chart(topic_counts).mark_line(point=True).encode(
+    x=alt.X('Date', title='Date'),
+    y=alt.Y('Count', title='Number of Actions'),
+    color=alt.Color('Topic', title='Fraud Topic'),
+    tooltip=['Date', 'Topic', 'Count']
+).properties(
+    title='Criminal and Civil Actions by Topic (Keyword Classification)',
+    width=600,
+    height=400
+)
+
+chart_3b_ii.display()
 ```
+
+***Analysis:* This plot breaks down the "Criminal and Civil Actions" category into five specific topics based on keyword analysis of the titles.**
+
+*Health Care Dominance:* The "Health Care Fraud" topic (teal line) is overwhelmingly the dominant category, consistently accounting for the vast majority of enforcement actions (often 20–50 per month). This aligns with the HHS OIG's primary mission to oversee Medicare and Medicaid programs.
+
+*Secondary Topics:* "Financial Fraud," "Drug Enforcement," and "Bribery/Corruption" represent a very small fraction of the total actions, rarely exceeding 5–8 actions per month. This suggests that while these issues exist, they are niche compared to general billing and provider fraud.
+
+The *"Other" Category:* The "Other" line (green) remains low, which is a positive sign for our classification function. It means that our "Health Care" keywords successfully captured the bulk of the relevant cases, leaving very few unclassified actions.
