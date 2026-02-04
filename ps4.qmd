@@ -67,7 +67,7 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-# 1. GET the webpage
+# Accessing the webpage with User-Agent headers (to prevent blocking)
 url = "https://oig.hhs.gov/fraud/enforcement/"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -75,14 +75,14 @@ headers = {
 response = requests.get(url, headers=headers)
 soup = BeautifulSoup(response.text, 'lxml')
 
-# 2. Find all entries
+# Find all entries
 entries = soup.find_all('div', class_='usa-card__container')
 actions = []
 
 for entry in entries:
     row = {}
     
-    # --- TITLE & LINK ---
+    # Title & Link
     try:
         heading = entry.find('h2', class_='usa-card__heading')
         title_tag = heading.find('a')
@@ -92,18 +92,15 @@ for entry in entries:
         row['Title'] = "N/A"
         row['Link'] = "N/A"
     
-    # --- DATE ---
+    # Date
     try:
-        # Based on your HTML, the date is in this specific span
         date_tag = entry.find('span', class_='text-base-dark')
         row['Date'] = date_tag.text.strip()
     except:
         row['Date'] = "N/A"
 
-    # --- CATEGORY (THE FIX) ---
+    # Categories
     try:
-        # We look for the <ul> with the class "display-inline add-list-reset"
-        # as seen in your printed HTML
         category_list = entry.find('ul', class_='display-inline add-list-reset')
         
         if category_list:
@@ -116,7 +113,7 @@ for entry in entries:
     
     actions.append(row)
 
-# 3. Create DataFrame and Check
+# Create DataFrame and Test Check
 df_step1 = pd.DataFrame(actions)
 print(df_step1.head())
 ```
@@ -126,19 +123,181 @@ print(df_step1.head())
 
 ### 1. Turning the scraper into a function 
 
-* a. Pseudo-Code
+1. 
 
+Choice of Loop: We will use a while loop.
+
+Reasoning: A standard for loop iterates over a known sequence (e.g., "Pages 1 to 50"). In this web crawling task, we do not know in advance how many pages of data exist back to our target date. If we guessed 50 pages, we might miss data; if we guessed 1000, we might waste resources.
+
+Logic: A while loop allows us to continue scraping indefinitely until a specific "Stop Condition" is met (in this case, finding a date older than our target year/month). This is the standard approach for crawlers where the depth is unknown.
+
+* a. Pseudo-Code
+(1) Define Function scrape_enforcement_actions(year, month):
+-> Input Validation: IF year < 2013: Print warning "Please restrict to year >= 2013" and RETURN.
+-> Setup:
+  -> Define stop_date using the input year and month.
+  -> Initialize all_actions empty list.
+  -> Initialize page = 1.
+  -> Set boolean flag keep_scraping = True.
+
+(2) Start Crawling Loop (while keep_scraping is True):
+a. Request Handling (Slide 10 & 16):
+  -> Construct URL with current page number.
+  -> Crucial: Send GET request with User-Agent headers to identify as a browser (this prevents blocking).
+  ->Parse: convert HTML to soup using lxml.
+
+b. Page Validation:
+  -> If no enforcement actions are found on the page -> BREAK loop (End of content).
+
+c. Extraction Loop (Iterate through items):
+For each enforcement action on the page:
+  ->Extract Title, Link, Category, and Date.
+  -> Parse Date: Convert text date to a Python Date Object.
+  -> Safety Check (The Exit Condition):
+    -> IF current/action_date < stop_date:
+      -> Set keep_scraping = False.
+      -> BREAK inner loop immediately.
+    -> ELSE:
+      -> Append data to all_actions.
+
+d. Pagination & Etiquette (Slide 16):
+  -> Increment page by 1.
+  -> Wait: Execute time.sleep(1) to respect server load and avoid rate-limiting.
+
+(3) Output:
+-> Convert all_actions to DataFrame.
+-> Save to "enforcement_actions_{year}_{month}.csv".
+-> Return DataFrame.
 
 * b. Create Dynamic Scraper
 
 ```{python}
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+from datetime import datetime
+import time
 
+def scrape_enforcement_actions(year, month):
+    # Constraint 2: Input Validation
+    if year < 2013:
+        print("Please restrict to year >= 2013, since only enforcement actions after 2013 are listed.")
+        return None
+
+    # Set the target stop date
+    stop_date = datetime(year, month, 1)
+    
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    
+    all_rows = []
+    page = 1
+    keep_scraping = True
+
+    while keep_scraping:
+        url = f"{base_url}?page={page}"
+        print(f"Scraping: {url}")
+        
+        try:
+            # Fetch with headers
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, 'lxml')
+            
+            entries = soup.find_all('div', class_='usa-card__container')
+            
+            # If page is empty, we are done
+            if not entries:
+                break
+                
+            for entry in entries:
+                row = {}
+                
+                # Title & Link
+                try:
+                    title_tag = entry.find('h2', class_='usa-card__heading').find('a')
+                    row['Title'] = title_tag.text.strip()
+                    row['Link'] = "https://oig.hhs.gov" + title_tag['href']
+                except:
+                    continue 
+
+                # Categories
+                try:
+                    category_list = entry.find('ul', class_='display-inline add-list-reset')
+                    if category_list:
+                        categories = [li.text.strip() for li in category_list.find_all('li')]
+                        row['Category'] = ", ".join(categories)
+                    else:
+                        row['Category'] = "N/A"
+                except:
+                    row['Category'] = "N/A"
+                
+                # Date & Stop Condition
+                try:
+                    date_text = entry.find('span', class_='text-base-dark').text.strip()
+                    row['Date'] = date_text
+                    
+                    current_date = datetime.strptime(date_text, "%B %d, %Y")
+                    
+                    # STOP CONDITION
+                    if current_date < stop_date:
+                        keep_scraping = False
+                        break 
+                except:
+                    row['Date'] = "N/A"
+                
+                all_rows.append(row)
+            
+            # Constraint 4: Wait 1 second
+            page += 1
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"Error on page {page}: {e}")
+            break
+
+    # Constraint 3: Save to CSV
+    df = pd.DataFrame(all_rows)
+    filename = f"enforcement_actions_{year}_{month}.csv"
+    df.to_csv(filename, index=False)
+    print(f"Scraping complete. Saved {len(df)} rows to {filename}")
+    
+    return df
 ```
 
 * c. Test Your Code
 
 ```{python}
+# Constraint 1: Indicator to prevent running during knit
+run_scraper = True  # REMINDER TO SET TO TRUE TO RUN, SET TO FALSE BEFORE SUBMITTING
 
+if run_scraper:
+    # --- PART 2b: January 2024 ---
+    print("--- Running for Jan 2024 ---")
+    df_2024 = scrape_enforcement_actions(2024, 1)
+    
+    # Answers for 2b:
+    print(f"Total actions since Jan 2024: {len(df_2024)}")
+    if not df_2024.empty:
+        print(f"Earliest action details (2024): \n{df_2024.iloc[-1]}")
+
+    # --- PART 2c: January 2022 ---
+    print("\n--- Running for Jan 2022 ---")
+    df_2022 = scrape_enforcement_actions(2022, 1)
+    
+    # Answers for 2c:
+    print(f"Total actions since Jan 2022: {len(df_2022)}")
+    if not df_2022.empty:
+        print(f"Earliest action details (2022): \n{df_2022.iloc[-1]}")
+
+else:
+    try:
+        df_2024 = pd.read_csv("enforcement_actions_2024_1.csv")
+        df_2022 = pd.read_csv("enforcement_actions_2022_1.csv")
+        print("Loaded data from CSVs.")
+    except:
+        print("CSVs not found. Set run_scraper = True to generate them.")
 ```
 
 ## Step 3: Plot data based on scraped data
