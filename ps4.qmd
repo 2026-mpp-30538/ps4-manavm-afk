@@ -270,7 +270,7 @@ def scrape_enforcement_actions(year, month):
 
 ```{python}
 # Constraint 1: Indicator to prevent running during knit
-run_scraper = True  # REMINDER TO SET TO TRUE TO RUN, SET TO FALSE BEFORE SUBMITTING
+run_scraper = False  # REMINDER TO SET TO TRUE TO RUN, SET TO FALSE BEFORE SUBMITTING
 
 if run_scraper:
     # --- PART 2b: January 2024 ---
@@ -299,6 +299,32 @@ else:
     except:
         print("CSVs not found. Set run_scraper = True to generate them.")
 ```
+
+**--- Running for Jan 2024 ---**
+Scraping complete. Saved 1769 rows to enforcement_actions_2024_1.csv
+
+**Total actions since Jan 2024: 1769**
+
+**Earliest action details (2024):** 
+*Title:* Former Nurse Aide Indicted In Death Of Clarksville Resident
+*Link:* https://oig.hhs.gov/fraud/enforcement/former-n...
+*Category:* State Enforcement Agencies
+*Date:* January 3, 2024
+
+Name: 1768, dtype: object
+
+**--- Running for Jan 2022 ---**
+scraping complete. Saved 3359 rows to enforcement_actions_2022_1.csv
+
+**Total actions since Jan 2022: 3359**
+
+**Earliest action details (2022):** 
+*Title:* Integrated Pain Management Medical Group Agree...
+*Link:* https://oig.hhs.gov/fraud/enforcement/integrat...
+*Category:* Fraud Self-Disclosures
+*Date:* January 4, 2022
+
+Name: 3358, dtype: object
 
 ## Step 3: Plot data based on scraped data
 
