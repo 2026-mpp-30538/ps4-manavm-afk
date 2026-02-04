@@ -270,7 +270,7 @@ def scrape_enforcement_actions(year, month):
 
 ```{python}
 # Constraint 1: Indicator to prevent running during knit
-run_scraper = False  # REMINDER TO SET TO TRUE TO RUN, SET TO FALSE BEFORE SUBMITTING
+run_scraper = True
 
 if run_scraper:
     # --- PART 2b: January 2024 ---
